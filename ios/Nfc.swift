@@ -1,68 +1,27 @@
 import Foundation
 import CoreNFC
-import CryptoSwift
-import CommonCrypto
+import JavaScriptCore
+
+private var cryptoJScontext = JSContext()
 
 @objc(Nfc)
 @available(iOS 13.0, *)
 class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
     var session: NFCNDEFReaderSession?
     var dataWrite: NFCNDEFMessage?
+    var dataRead: NFCNDEFMessage?
+    var dataJs: String?
+    var callback: RCTResponseSenderBlock?
+    var encryptFunction: JSValue?
+    var decryptFunction: JSValue?
     var resolveGlobal: RCTPromiseResolveBlock?
-    let prefix:[UInt8] = [
-        83,  97, 108, 116,
-       101, 100,  95,  95,
-          150, 22, 82, 143,
-          156,  7,  2, 110
-     ]
     
     func readerSession(_ session: NFCNDEFReaderSession, didInvalidateWithError error: any Error) {
-        do{
-                    print("messages", "error")
-                    print("test")
-            let datatest = "delay card fiction vacant athlete buyer tower cinnamon april bus jacket enforce"
-            let pass = "1234123412341234"
-            
-            
-                    let test1 = self.encrypt(data: datatest, key: pass)
-                    print("test",test1)
-                    let test2 = self.decrypt(encrypted: test1, key: pass)
-                    print("test",test2)
-                    print("test end")
-        } catch{
-            
-        }
+
     }
     
     func readerSession(_ session: NFCNDEFReaderSession, didDetectNDEFs messages: [NFCNDEFMessage]) {
         print("messages",messages)
-    }
-    
-    
-    func encrypt(data: String, key:String) -> String {
-        do {
-            let keydata = try PKCS5.PBKDF2(password: key.bytes, salt: "salt".bytes, iterations: 1, keyLength: 32, variant: .md5).calculate()
-            let iv = AES.randomIV(AES.blockSize)
-            let aes = try! AES(key: keydata, blockMode: CBC(iv: iv), padding: .pkcs7)
-            
-            let ciphertext = try aes.encrypt(data.bytes)
-            print("datatat",ciphertext)
-            
-            return (prefix+ciphertext).toBase64()
-        } catch {
-            return "false"
-        }
-    }
-    
-    func decrypt(encrypted: String, key:String) -> String {
-        do {
-//            let iv = String(decoding: AES.randomIV(AES.blockSize), as: UTF8.self)
-            let aes = try AES(key: key, iv:  "drowssapdrowssap") // aes128
-            let ciphertext = try aes.decrypt([UInt8](base64: encrypted))
-            return String(decoding: ciphertext, as: UTF8.self)
-        } catch {
-            return "false"
-        }
     }
     
     func giftZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag, didDetect data: NFCNDEFMessage){
@@ -93,9 +52,9 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
     
     func readZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag){
         session.connect(to: tag){ (error: Error?) in
-            tag.readNDEF(completionHandler: { (message: NFCNDEFMessage?, error: Error?) in
+            tag.readNDEF(completionHandler: { [self] (message: NFCNDEFMessage?, error: Error?) in
                 session.alertMessage = "read okla"
-                if error != nil {
+                if error != nil && message != nil {
                    
                 }
                 else {
@@ -103,6 +62,16 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
                 }
                 session.invalidate()
                 let data = [String(decoding: (message?.records[0].payload)!, as: UTF8.self),String(decoding: (message?.records[1].payload)!, as: UTF8.self)]
+                print("daddadadadadada tag ",data)
+                let data2 = "U2FsdGVkX1/+5s95qtaccKgLCC5AKSU9bGTUQRnvd3dlNqvfXCf6dTN86EJwUEOPmiSZItJpejTXPvBLZCNp63jJsJxGVcQNr4hH/o3BeThbud3uJX6j6IxX+VyB7xdq"
+                let mnemonic = "delay card fiction vacant athlete buyer tower cinnamon april bus jacket enforce"
+                let pass = "1234123412341234"
+                let ddadadaad = "\(self.encryptFunction!.call(withArguments: [mnemonic, pass])!)"
+                let ddadadaad2 = "\(self.decryptFunction!.call(withArguments: [data2, pass])!)"
+                print("data after encryptFunction",ddadadaad)
+                print("data after decryptFunction",ddadadaad2)
+                
+                
                 self.resolveGlobal!(data)
             })
         }
@@ -110,7 +79,19 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
     
     func writeZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag, didDetect data: NFCNDEFMessage){
         session.connect(to: tag){ (error: Error?) in
+            tag.readNDEF(completionHandler: { (message: NFCNDEFMessage?, error: Error?) in
+                print("message",message)
+                session.alertMessage = "read okla"
+                if error != nil {}
+                else {
+                    session.restartPolling()
+                }
+                self.dataRead = message
+            })
             tag.writeNDEF(data) { (error: Error?) in
+                
+                let data = [String(decoding: (self.dataRead?.records[0].payload)!, as: UTF8.self),String(decoding: (self.dataRead?.records[1].payload)!, as: UTF8.self)]
+                print("data",data)
                 if error != nil {
                     print("error")
                     session.alertMessage = "Update error write 0"
@@ -134,7 +115,7 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
                                      payload: "nam thang manh thuong quan (nami)".data(using: .utf8)!)
         let ndefMessage = NFCNDEFMessage(records: [dataTag,dataTag,dataTag])
         
-        self.readZen(session,didDetect: tag)
+        self.writeZen(session,didDetect: tag,didDetect: ndefMessage)
         
     }
     
@@ -154,9 +135,33 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
         self.connect(mess: "Hold to die(read)")
         resolveGlobal = resolve
     }
-    @objc(write:withResolver:withRejecter:)
-    func write(data: Array<Double>,resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock) -> Void {
+    @objc(write:writeResolver:writeRejecter:)
+    func write(data: String,resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock) -> Void {
         self.connect(mess: "Hold to die(write)")
         resolveGlobal = resolve
+    }
+    
+    @objc(sendData:)
+    func sendData(data:String) -> Void {
+        print("sendData",data)
+        dataJs = data
+    }
+    
+    @objc(test:testCallback:)
+    func test(dataTest:Array<Double>,callbackMethod:@escaping RCTResponseSenderBlock){
+        print("dataTest",dataTest)
+        
+        let cryptoJSpath = Bundle.main.path(forResource: "aes", ofType: "js")
+        do {
+            let cryptoJS = try String(contentsOfFile: cryptoJSpath!, encoding: String.Encoding.utf8)
+            print("Loaded aes.js")
+            _ = cryptoJScontext?.evaluateScript(cryptoJS)
+            encryptFunction = cryptoJScontext?.objectForKeyedSubscript("encrypt")
+            decryptFunction = cryptoJScontext?.objectForKeyedSubscript("decrypt")
+        }
+                        catch {
+                            print("Unable to load aes.js")
+                        }
+//        callback = callbackMethod
     }
 }

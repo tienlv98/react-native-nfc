@@ -25,6 +25,14 @@ export function read(): Promise<string[]> {
   return Nfc.read();
 }
 
-export function write(data: number[]) {
+export function write(data: string):Promise<string[]> {
   return Nfc.write(data);
+}
+
+export function sendData(data: string) {
+  return Nfc.sendData(data);
+}
+
+export function test(data: number[], callBack: any) {
+  return Nfc.test(data,callBack)
 }
