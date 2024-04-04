@@ -3,13 +3,14 @@ import CoreNFC
 import JavaScriptCore
 
 private var cryptoJScontext = JSContext()
+private let SECTOR_SIZE = 16
 
 @objc(Nfc)
 @available(iOS 13.0, *)
 class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
     var session: NFCNDEFReaderSession?
-    var dataWrite: NFCNDEFMessage?
-    var dataRead: NFCNDEFMessage?
+    var dataWrite: String?
+    var dataRead: [String]?
     var dataJs: String?
     var callback: RCTResponseSenderBlock?
     var encryptFunction: JSValue?
@@ -24,99 +25,102 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
         print("messages",messages)
     }
     
-    func giftZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag, didDetect data: NFCNDEFMessage){
-        session.connect(to: tag){ (error: Error?) in
-            tag.readNDEF(completionHandler: { (message: NFCNDEFMessage?, error: Error?) in
-                print("message",message)
-                session.alertMessage = "read okla"
-                if error != nil {}
-                else {
-                    session.restartPolling()
-                }
-            })
+    func giftZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag) async {
+        do {
+            try await session.connect(to: tag)
+            let datatag: NFCNDEFMessage = try await tag.readNDEF()
+            let dataEncryped = String(decoding: (datatag.records[0].payload), as: UTF8.self)
+            let pass = String(decoding: (datatag.records[1].payload), as: UTF8.self)
+            let mnemonic = "\(self.decryptFunction!.call(withArguments: [dataEncryped, pass])!)"
+            print("mnemonic",self.decryptFunction,pass)
+
+            let splitForDevice = String(dataEncryped.suffix(dataEncryped.count - SECTOR_SIZE))
+            let splitForCard = String(dataEncryped.prefix(SECTOR_SIZE))
+            print("splitForDevice",splitForDevice)
+           
+            let ndefMessage = NFCNDEFMessage(records: [
+                NFCNDEFPayload(format: NFCTypeNameFormat.nfcWellKnown,
+                                             type: "text/plain".data(using: .utf8)!,
+                                             identifier: Data.init(count: 0),
+                                             payload: splitForCard.data(using: .utf8)!),
+                NFCNDEFPayload(format: NFCTypeNameFormat.nfcWellKnown,
+                                             type: "text/plain".data(using: .utf8)!,
+                                             identifier: Data.init(count: 0),
+                                             payload: pass.data(using: .utf8)!)
+            ])
             
-            tag.writeNDEF(data) { (error: Error?) in
-                if error != nil {
-                    print("error")
-                    session.alertMessage = "Update error write 0"
-                    session.restartPolling()
-                    
-                } else {
-                    print("success")
-                    session.alertMessage = "Update success write 1"
-                    session.invalidate()
-                }
-            }
+            print("write",write)
+            
+            try await tag.writeNDEF(ndefMessage)
+            session.alertMessage = "Update success write"
+            session.invalidate()
+            self.resolveGlobal!([mnemonic,splitForDevice])
+        }
+        catch{
+            session.alertMessage = "Update error write"
+            session.restartPolling()
         }
     }
     
     func readZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag){
         session.connect(to: tag){ (error: Error?) in
             tag.readNDEF(completionHandler: { [self] (message: NFCNDEFMessage?, error: Error?) in
-                session.alertMessage = "read okla"
                 if error != nil && message != nil {
                    
                 }
                 else {
                     session.restartPolling()
                 }
+                session.alertMessage = "read okla"
                 session.invalidate()
-                let data = [String(decoding: (message?.records[0].payload)!, as: UTF8.self),String(decoding: (message?.records[1].payload)!, as: UTF8.self)]
-                print("daddadadadadada tag ",data)
-                let data2 = "U2FsdGVkX1/+5s95qtaccKgLCC5AKSU9bGTUQRnvd3dlNqvfXCf6dTN86EJwUEOPmiSZItJpejTXPvBLZCNp63jJsJxGVcQNr4hH/o3BeThbud3uJX6j6IxX+VyB7xdq"
-                let mnemonic = "delay card fiction vacant athlete buyer tower cinnamon april bus jacket enforce"
-                let pass = "1234123412341234"
-                let ddadadaad = "\(self.encryptFunction!.call(withArguments: [mnemonic, pass])!)"
-                let ddadadaad2 = "\(self.decryptFunction!.call(withArguments: [data2, pass])!)"
-                print("data after encryptFunction",ddadadaad)
-                print("data after decryptFunction",ddadadaad2)
-                
-                
-                self.resolveGlobal!(data)
+                let splitForCard = String(decoding: (message?.records[0].payload)!, as: UTF8.self)
+                let pass = String(decoding: (message?.records[1].payload)!, as: UTF8.self)
+                let mnemonic = "\(self.decryptFunction!.call(withArguments: [splitForCard + self.dataWrite!, pass])!)"
+                self.resolveGlobal!(mnemonic)
             })
         }
     }
     
-    func writeZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag, didDetect data: NFCNDEFMessage){
-        session.connect(to: tag){ (error: Error?) in
-            tag.readNDEF(completionHandler: { (message: NFCNDEFMessage?, error: Error?) in
-                print("message",message)
-                session.alertMessage = "read okla"
-                if error != nil {}
-                else {
-                    session.restartPolling()
-                }
-                self.dataRead = message
-            })
-            tag.writeNDEF(data) { (error: Error?) in
-                
-                let data = [String(decoding: (self.dataRead?.records[0].payload)!, as: UTF8.self),String(decoding: (self.dataRead?.records[1].payload)!, as: UTF8.self)]
-                print("data",data)
-                if error != nil {
-                    print("error")
-                    session.alertMessage = "Update error write 0"
-                    session.restartPolling()
-                    
-                } else {
-                    print("success")
-                    session.alertMessage = "Update success write 1"
-                    session.invalidate()
-                }
-            }
+    func writeZen(_ session: NFCNDEFReaderSession, didDetect tag: NFCNDEFTag) async {
+        do {
+            try await session.connect(to: tag)
+            let datatag: NFCNDEFMessage = try await tag.readNDEF()
+//            let splitForCard = String(decoding: (datatag.records[0].payload), as: UTF8.self)
+            let pass = String(decoding: (datatag.records[1].payload), as: UTF8.self)
+            let dataEncryped = "\(self.encryptFunction!.call(withArguments: [self.dataWrite!, pass])!)"
+            let splitForDevice = String(dataEncryped.suffix(dataEncryped.count - SECTOR_SIZE))
+            let splitForCard = String(dataEncryped.prefix(SECTOR_SIZE))
+            print("splitForDevice",splitForDevice)
+           
+            let ndefMessage = NFCNDEFMessage(records: [
+                NFCNDEFPayload(format: NFCTypeNameFormat.media,
+                                             type: "text/plain".data(using: .utf8)!,
+                                             identifier: Data.init(count: 0),
+                                             payload: splitForCard.data(using: .utf8)!),
+                NFCNDEFPayload(format: NFCTypeNameFormat.media,
+                                             type: "text/plain".data(using: .utf8)!,
+                                             identifier: Data.init(count: 0),
+                                             payload: pass.data(using: .utf8)!)
+            ])
+            
+            print("write",write)
+            
+            try await tag.writeNDEF(ndefMessage)
+            session.alertMessage = "Update success write"
+            session.invalidate()
+            self.resolveGlobal!(splitForDevice)
+        }
+        catch{
+            session.alertMessage = "Update error write"
+            session.restartPolling()
         }
     }
     
     func readerSession(_ session: NFCNDEFReaderSession,didDetect tags: [NFCNDEFTag]){
         let tag = tags.first!
-        print("tags",tag)
-        let dataTag = NFCNDEFPayload(format: NFCTypeNameFormat.media,
-                                     type: "text/plain".data(using: .utf8)!,
-                                     identifier: Data.init(count: 0),
-                                     payload: "nam thang manh thuong quan (nami)".data(using: .utf8)!)
-        let ndefMessage = NFCNDEFMessage(records: [dataTag,dataTag,dataTag])
-        
-        self.writeZen(session,didDetect: tag,didDetect: ndefMessage)
-        
+        Task{
+            await self.giftZen(session,didDetect: tag)
+        }
     }
     
     func connect(mess: String){
@@ -126,31 +130,25 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
     }
     
     @objc(gift:giftRejecter:)
-    func gift (resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock){
+    func gift(resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock){
         self.connect(mess: "Hold to die(gift)")
         resolveGlobal = resolve
     }
-    @objc(read:readRejecter:)
-    func read(resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock) -> Void {
+    @objc(read:readResolver:readRejecter:)
+    func read(splitForDevice: String,resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock) -> Void {
         self.connect(mess: "Hold to die(read)")
         resolveGlobal = resolve
+        dataWrite = splitForDevice
     }
     @objc(write:writeResolver:writeRejecter:)
-    func write(data: String,resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock) -> Void {
+    func write(mnemonic: String,resolve:@escaping RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock) -> Void {
         self.connect(mess: "Hold to die(write)")
         resolveGlobal = resolve
+        dataWrite = mnemonic
     }
     
-    @objc(sendData:)
-    func sendData(data:String) -> Void {
-        print("sendData",data)
-        dataJs = data
-    }
-    
-    @objc(test:testCallback:)
-    func test(dataTest:Array<Double>,callbackMethod:@escaping RCTResponseSenderBlock){
-        print("dataTest",dataTest)
-        
+    @objc(initNfc:initRejecter:)
+    func initNfc(resolve: RCTPromiseResolveBlock,reject:RCTPromiseRejectBlock){
         let cryptoJSpath = Bundle.main.path(forResource: "aes", ofType: "js")
         do {
             let cryptoJS = try String(contentsOfFile: cryptoJSpath!, encoding: String.Encoding.utf8)
@@ -159,9 +157,9 @@ class Nfc: NSObject, NFCNDEFReaderSessionDelegate{
             encryptFunction = cryptoJScontext?.objectForKeyedSubscript("encrypt")
             decryptFunction = cryptoJScontext?.objectForKeyedSubscript("decrypt")
         }
-                        catch {
-                            print("Unable to load aes.js")
-                        }
-//        callback = callbackMethod
+        catch {
+            print("Unable to load aes.js")
+        }
+
     }
 }

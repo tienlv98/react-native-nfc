@@ -17,22 +17,18 @@ const Nfc = NativeModules.Nfc
     }
   );
 
-export function gift(): Promise<number> {
+export function gift(): Promise<string[]> {
   return Nfc.gift();
 }
 
-export function read(): Promise<string[]> {
-  return Nfc.read();
+export function read(data: string): Promise<string[]> {
+  return Nfc.read(data);
 }
 
 export function write(data: string):Promise<string[]> {
   return Nfc.write(data);
 }
 
-export function sendData(data: string) {
-  return Nfc.sendData(data);
-}
-
-export function test(data: number[], callBack: any) {
-  return Nfc.test(data,callBack)
+export function init() {
+  return Nfc.initNfc()
 }
