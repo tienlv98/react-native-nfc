@@ -21,8 +21,8 @@ export function gift(): Promise<string[]> {
   return Nfc.gift();
 }
 
-export function read(data: string): Promise<string[]> {
-  return Nfc.read(data);
+export function read(): Promise<string[]> {
+  return Nfc.read();
 }
 
 export function write(data: string):Promise<string[]> {

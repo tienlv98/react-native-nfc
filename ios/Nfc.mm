@@ -4,8 +4,7 @@
 
 RCT_EXTERN_METHOD(gift:(RCTPromiseResolveBlock)resolve
                   giftRejecter:(RCTPromiseRejectBlock)reject)
-RCT_EXTERN_METHOD(read:(NSString)data
-                  readResolver:(RCTPromiseResolveBlock)resolve
+RCT_EXTERN_METHOD(read:(RCTPromiseResolveBlock)resolve
                   readRejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(write:(NSString)data
                   writeResolver:(RCTPromiseResolveBlock)resolve
